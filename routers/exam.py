@@ -1,7 +1,7 @@
 from fastapi import *
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from core import get_current_user, authenticate_admin
+from core import get_current_user, authenticate_admin, authenticate_student
 from sqlalchemy.orm import Session
 from fastapi.security import HTTPBearer
 from core import get_db
@@ -85,4 +85,37 @@ async def delete_exam(
     if result:
         return JSONResponse(content={'status': 'Successfully deleted!'}, status_code=status.HTTP_200_OK)
     else:
-        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST)   
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST) 
+    
+    
+@exam_router.get('/active/')
+async def active_exams(
+    header_param: Request, 
+    db: Session = Depends(get_db)):
+    dec_token = await get_current_user(header_param)
+    user = authenticate_student(dec_token['username'], dec_token['password'], db)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail='Could not validate user')
+    result = await crud.get_active_exams(user.id, db)
+    result = jsonable_encoder(result)
+    if result:
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    else:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST) 
+
+
+@exam_router.get('/passed/')
+async def passed_exams(
+    header_param: Request, 
+    db: Session = Depends(get_db)):
+    dec_token = await get_current_user(header_param)
+    user = authenticate_student(dec_token['username'], dec_token['password'], db)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail='Could not validate user')
+    result = jsonable_encoder(await crud.get_passed_exams(user.id, db))
+    if result:
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    else:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST) 

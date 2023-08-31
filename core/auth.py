@@ -105,15 +105,51 @@ async def create_user(req: studentSchema, db: Session = Depends(get_db),):
 async def login_for_access_token(user: UserRequest,
                                 db: Session = Depends(get_db)):
     user = authenticate_student(user.username, user.password, db)
+    if user.in_exam:
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                             detail='This student already in exam!')
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail='Could not validate user')
     
-    user = jsonable_encoder(user)
-    del user['hashed_password']
-    return JSONResponse(content=user, status_code=status.HTTP_200_OK)
+    db.query(Student).filter(Student.id == user.id)\
+        .update({
+            Student.in_exam: True
+        }, synchronize_session=False)
+    db.commit()
+    result = {
+        'id': user.id,
+        'username': user.username,
+        'token': user.token
+    }
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
+
+def authenticate_student(username: str, password: str, db):
+    user = db.query(Student).filter(Student.username == username).first()
+    if not user:
+        return False
+    if not bcrypt_context.verify(password, user.hashed_password):
+        return False
+    return user
+
+
+
+@auth_router.delete('/logout/', dependencies=[Depends(HTTPBearer())])
+async def logout_student(header_param: Request, 
+                         db: Session = Depends(get_db)):
+    dec_token = await get_current_user(header_param)
+    user = authenticate_student(dec_token['username'], dec_token['password'], db)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail='Could not validate user')
+    db.query(Student).filter(Student.id == user.id)\
+        .update({
+            Student.in_exam: False            
+        }, synchronize_session=False)
+    db.commit()
+    return JSONResponse(content={'status': 'Successfully logged out!'}, status_code=status.HTTP_200_OK)
 
 
 
@@ -132,13 +168,7 @@ def authenticate_admin(username: str, password: str, db):
     return user
 
 
-def authenticate_student(username: str, password: str, db):
-    user = db.query(Student).filter(Student.username == username).first()
-    if not user:
-        return False
-    if not bcrypt_context.verify(password, user.hashed_password):
-        return False
-    return user
+
 
 
 async def get_current_user(header_params: Request):

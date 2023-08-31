@@ -1,6 +1,6 @@
 from fastapi import Request
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import desc, and_
 import models as mod
 
 
@@ -38,3 +38,24 @@ async def delete_exam(id: int, db: Session):
     db.commit()
     return True
 
+
+
+async def get_active_exams(student_id: int, db: Session):
+    passedExams = db.query(mod.PassedExams).filter(mod.PassedExams.student_id == student_id).all()
+    activeExams = db.query(mod.Exam).filter(mod.Exam.status == True).order_by(desc(mod.Exam.id)).all()
+    resultActiveExams = []
+    for active in activeExams:
+        k = 0
+        for passed in passedExams:
+            if active.id == passed.exam_id:
+                k = 1
+        if k == 0:
+            resultActiveExams.append(active)
+    return resultActiveExams
+
+
+async def get_passed_exams(student_id: int, db: Session):
+    passedExams = db.query(mod.PassedExams)\
+        .filter(mod.PassedExams.student_id == student_id)\
+            .options(joinedload(mod.PassedExams.exam)).all()
+    return passedExams
